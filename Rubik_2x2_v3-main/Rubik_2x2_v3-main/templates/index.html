@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pocket Cube Solver</title>
+<style>
+  :root{
+    --bg:#1B1D22;
+    --surface:#24262C;
+    --surface-2:#2C2F37;
+    --border:#34373F;
+    --text:#EDEDED;
+    --text-dim:#9A9DA6;
+    --accent:#F2A93B;
+    --accent-text:#1B1D22;
+    --danger:#E5646A;
+    --danger-bg:#3A2429;
+    --success:#5FBE8D;
+    --success-bg:#1E3129;
+    --sticker-empty:#3A3D45;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    padding: 2.5rem 1.25rem 4rem;
+  }
+  .wrap { max-width: 620px; margin: 0 auto; }
+  header { margin-bottom: 1.75rem; text-align: center; }
+  h1 { font-size: 1.6rem; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 0.4rem; }
+  .tagline { color: var(--text-dim); margin: 0 auto; max-width: 44ch; font-size: 0.92rem; }
+
+  .palette { display: flex; justify-content: center; gap: 0.5rem; margin: 1.75rem 0 1.25rem; flex-wrap: wrap; }
+  .palette-btn {
+    width: 2.4rem; height: 2.4rem; border-radius: 8px;
+    border: 2px solid rgba(255,255,255,0.12); cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  .palette-btn:hover { transform: translateY(-2px); }
+  .palette-btn.active { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--accent); }
+  .palette.disabled { opacity: 0.35; pointer-events: none; }
+
+  .cube-stage { display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
+  .scene { width: 300px; height: 300px; perspective: 1100px; }
+  .cube-outer {
+    width: 100%; height: 100%; position: relative;
+    transform-style: preserve-3d; transform: rotateX(-24deg) rotateY(-35deg);
+  }
+  .cube-nav {
+    width: 100%; height: 100%; position: relative;
+    transform-style: preserve-3d; transition: transform 0.45s cubic-bezier(.25,.8,.25,1);
+  }
+  /* cube-inner adalah pivot point untuk animasi rotasi seluruh kubus (reorientasi) */
+  .cube-inner { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; }
+
+  .cubie {
+    position: absolute; left: 50%; top: 50%;
+    width: 80px; height: 80px; margin: -40px 0 0 -40px;
+    transform-style: preserve-3d;
+    pointer-events: none;
+  }
+  .cubie-face {
+    position: absolute; inset: 0;
+    width: 80px; height: 80px;
+    border-radius: 6px;
+    background: var(--sticker-empty);
+    border: 3px solid #101114;
+    cursor: pointer;
+    padding: 0;
+    transition: filter 0.08s ease;
+    pointer-events: auto;
+  }
+  .cubie-face:hover { filter: brightness(1.12); }
+  .cubie-face.readonly { cursor: default; }
+  .cubie-face.readonly:hover { filter: none; }
+  .cubie-core {
+    position: absolute; inset: 0;
+    width: 80px; height: 80px;
+    background: #101114;
+    pointer-events: none;
+  }
+
+  .nav-arrows { display: flex; gap: 0.5rem; }
+  .nav-arrows button {
+    width: 2.6rem; height: 2.2rem; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--surface-2);
+    color: var(--text); font-size: 1rem; cursor: pointer;
+  }
+  .nav-arrows button:hover { background: #363a43; }
+
+  .progress { color: var(--text-dim); font-size: 0.82rem; text-align: center; margin: 1.4rem 0 1rem; }
+
+  .actions { display: flex; gap: 0.6rem; flex-wrap: wrap; justify-content: center; margin-bottom: 1.5rem; }
+  button { font: inherit; }
+  .actions button {
+    font-weight: 600; font-size: 0.9rem; border: none; border-radius: 8px;
+    padding: 0.65rem 1.15rem; cursor: pointer;
+  }
+  #btn-solve { background: var(--accent); color: var(--accent-text); }
+  #btn-solve:disabled { opacity: 0.55; cursor: default; }
+  .secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+
+  .result {
+    border-radius: 10px; padding: 1.1rem 1.25rem; border: 1px solid var(--border);
+    background: var(--surface); opacity: 0; transform: translateY(4px);
+    transition: opacity 0.25s ease, transform 0.25s ease; margin-bottom: 1.25rem;
+  }
+  .result.hidden { display: none; }
+  .result.show { opacity: 1; transform: translateY(0); }
+  .result.error { border-color: var(--danger); background: var(--danger-bg); }
+  .result.success { border-color: var(--success); background: var(--success-bg); }
+  .result p { margin: 0 0 0.4rem; }
+  .result p:last-child { margin-bottom: 0; }
+
+  .moves {
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 1.02rem; letter-spacing: 0.02em;
+  }
+  .moves .tok {
+    display: inline-block; padding: 0.1rem 0.4rem; margin: 0.1rem;
+    border-radius: 5px; background: var(--surface-2);
+  }
+  .moves .tok.done { color: var(--text-dim); background: transparent; }
+  .moves .tok.active { color: var(--accent-text); background: var(--accent); font-weight: 700; }
+  .move-count { color: var(--text-dim); font-size: 0.8rem; }
+
+  .step-controls { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 1.1rem; }
+  .step-controls.hidden { display: none; }
+  .step-controls button {
+    border-radius: 7px; border: 1px solid var(--border); background: var(--surface-2);
+    color: var(--text); padding: 0.5rem 0.9rem; font-weight: 600; font-size: 0.85rem; cursor: pointer;
+  }
+  .step-controls button:disabled { opacity: 0.4; cursor: default; }
+  .step-indicator { color: var(--text-dim); font-size: 0.85rem; min-width: 4rem; text-align: center; }
+
+  /* Label teks instruksi per-langkah */
+  .step-label { text-align: center; font-size: 0.95rem; max-width: 38ch; margin: 0 auto; }
+  .step-label.hidden { display: none; }
+
+  /* Pivot container untuk animasi rotasi lapisan kubus */
+  .layer-pivot {
+    position: absolute; left: 50%; top: 50%;
+    width: 0; height: 0;
+    transform-style: preserve-3d;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Pocket Cube Solver</h1>
+      <p class="tagline">
+        Pilih warna lalu klik sisi kubus untuk mewarnainya. Putar kubus
+        dengan panah untuk melihat sisi lain.
+      </p>
+    </header>
+
+    <div class="palette" id="palette"></div>
+
+    <div class="cube-stage">
+      <div class="scene">
+        <div class="cube-outer">
+          <div class="cube-nav" id="cube-nav">
+            <div class="cube-inner" id="cube-inner"></div>
+          </div>
+        </div>
+      </div>
+      <div class="nav-arrows">
+        <button id="nav-left" title="Putar kiri">←</button>
+        <button id="nav-up" title="Putar atas/bawah">↑</button>
+        <button id="nav-right" title="Putar kanan">→</button>
+      </div>
+    </div>
+
+    <p class="progress" id="progress">0/24 stiker terisi</p>
+
+    <div class="actions">
+      <button id="btn-solve">Selesaikan</button>
+      <button id="btn-example" class="secondary">Isi Contoh Acak</button>
+      <button id="btn-reset" class="secondary">Reset</button>
+    </div>
+
+    <section id="result" class="result hidden"></section>
+
+    <p id="step-label" class="step-label hidden"></p>
+    <div id="step-controls" class="step-controls hidden">
+      <button id="step-prev">← Sebelumnya</button>
+      <span class="step-indicator" id="step-indicator">0 / 0</span>
+      <button id="step-next">Berikutnya →</button>
+    </div>
+  </div>
+
+<script>
+  // ================================================================
+  // DATA GEOMETRIS -- diverifikasi cocok persis dgn Python
+  // ================================================================
+  const CORNER_NAMES = ["URF","UFL","ULB","UBR","DFR","DLF","DBL","DRB"];
+  // Koordinat kubus: x=kanan(+1)/kiri(-1), y=atas(+1)/bawah(-1), z=depan(+1)/belakang(-1)
+  const CORNER_COORD = {
+    0:[1,1,1], 1:[-1,1,1], 2:[-1,1,-1], 3:[1,1,-1],
+    4:[1,-1,1], 5:[-1,-1,1], 6:[-1,-1,-1], 7:[1,-1,-1],
+  };
+  const CORNER_FACES = {
+    0:["U","R","F"], 1:["U","F","L"], 2:["U","L","B"], 3:["U","B","R"],
+    4:["D","F","R"], 5:["D","L","F"], 6:["D","B","L"], 7:["D","R","B"],
+  };
+  const COLORS = ["White","Yellow","Green","Blue","Orange","Red"];
+  const COLOR_HEX = {
+    White:"#F5F5F0", Yellow:"#FFD500", Green:"#009B48",
+    Blue:"#0045AD", Orange:"#FF5900", Red:"#B71234",
+  };
+  const COLOR_LABEL_ID = {
+    White:"Putih", Yellow:"Kuning", Green:"Hijau",
+    Blue:"Biru", Orange:"Oranye", Red:"Merah",
+  };
+
+  const CUBIE = 80, OFFSET = 44, H = CUBIE / 2;
+  const FACE_LOCAL_TRANSFORM = {
+    F: `translateZ(${H}px)`,
+    B: `rotateY(180deg) translateZ(${H}px)`,
+    R: `rotateY(90deg) translateZ(${H}px)`,
+    L: `rotateY(-90deg) translateZ(${H}px)`,
+    U: `rotateX(90deg) translateZ(${H}px)`,
+    D: `rotateX(-90deg) translateZ(${H}px)`,
+  };
+
+  // Nama lapisan untuk teks instruksi
+  const FACE_LABEL_ID = { U: "ATAS", R: "KANAN", F: "DEPAN" };
+
+  // Slot cubie yang termasuk dalam tiap lapisan (sesuai CORNER_COORD)
+  // U: slot yang y=+1: URF(0), UFL(1), ULB(2), UBR(3)
+  // R: slot yang x=+1: URF(0), UBR(3), DFR(4), DRB(7)
+  // F: slot yang z=+1: URF(0), UFL(1), DFR(4), DLF(5)
+  const LAYER_SLOTS = { U: [0,1,2,3], R: [0,3,4,7], F: [0,1,4,5] };
+
+  // Axis rotasi CSS untuk tiap lapisan (dengan konvensi CSS 3D):
+  // U -> rotasi di sumbu Y
+  // R -> rotasi di sumbu X
+  // F -> rotasi di sumbu Z
+  const LAYER_AXIS = { U: "Y", R: "X", F: "Z" };
+
+  // ---------------------------------------------------------------
+  // Arah sudut BENAR untuk gerakan CW — derivasi dari permutasi Python
+  //
+  // Konvensi koordinat kita: x=kanan(+), y=atas(+), z=depan(+)
+  // CSS translate3d: (x*44, -y*44, z*44)  ← CSS y = -konseptual y (CSS y+ ke bawah)
+  //
+  // Cara menentukan sudut CSS:
+  //   1. Baca permutasi Python: perm[i]=src artinya piece di src pindah ke slot i.
+  //   2. Cari rotasi CSS yang memindahkan cubie secara visual ke posisi yang tepat.
+  //
+  // Gerakan U CW (dari atas): Python perm[UFL]=URF → piece di URF pindah ke UFL
+  //   URF(x=1,z=1) → UFL(x=-1,z=1).  rotateY(t): new_x = x·cos+z·sin, new_z = -x·sin+z·cos
+  //   Perlu: new_x=-1, new_z=1 dari (1,1).  cos(t)=0, sin(t)=-1 → t=-90°. ✓
+  //   Siklus visual: URF→UFL→ULB→UBR→URF  (CW dari atas)
+  //
+  // Gerakan R CW (dari kanan): Python perm[UBR]=URF → piece di URF pindah ke UBR
+  //   URF(CSS_y=-1,z=1) → UBR(CSS_y=-1,z=-1).  rotateX(t): new_CSy=CSy·cos-z·sin, new_z=CSy·sin+z·cos
+  //   Perlu: new_CSy=-1, new_z=-1 dari (-1,1). cos(t)=0, sin(t)=1 → t=+90°. ✓
+  //   Siklus visual: URF→UBR→DRB→DFR→URF  (CW dari kanan)
+  //
+  // Gerakan F CW (dari depan): Python perm[DFR]=URF → piece di URF pindah ke DFR
+  //   URF(x=1,CSS_y=-1) → DFR(x=1,CSS_y=+1).  rotateZ(t): new_x=x·cos-CSy·sin, new_CSy=x·sin+CSy·cos
+  //   Perlu: new_x=1, new_CSy=1 dari (1,-1). cos(t)=0, sin(t)=1 → t=+90°. ✓
+  //   Siklus visual: URF→DFR→DLF→UFL→URF  (CW dari depan)
+  // ---------------------------------------------------------------
+  const BASE_ANGLE = { U: -90, R: 90, F: 90 };
+  // rotateY(-90) = U CW ✓,  rotateX(+90) = R CW ✓,  rotateZ(+90) = F CW ✓
+
+  // Reorientasi: mapping token Python ke axis dan sudut CSS
+  //
+  // Python _rot_x: (x,y,z) → (x,-z,y)
+  //   CSS target: new_CSy = z_old (karena CSy=-y, new_y=-z → new_CSy=z), new_z = y_old = -CSy_old
+  //   rotateX(t): new_CSy = CSy·cos - z·sin, new_z = CSy·sin + z·cos
+  //   Perlu: cos=0, sin=-1 → t=-90°. CSS rotateX(-90). ✓
+  //
+  // Python _rot_y: (x,y,z) → (z,y,-x)
+  //   CSS target: new_x = z_old, new_z = -x_old (y/CSy tidak berubah)
+  //   rotateY(t): new_x = x·cos + z·sin, new_z = -x·sin + z·cos
+  //   Perlu: cos=0, sin=1 → t=+90°. CSS rotateY(+90). ✓
+  const REORIENT_AXIS_ANGLE = {
+    x: { axis: "X", angle: -90 },  // Python _rot_x = CSS rotateX(-90)
+    y: { axis: "Y", angle:  90 },  // Python _rot_y = CSS rotateY(+90)
+  };
+
+  function moveAngle(move) {
+    const face = move[0], suffix = move.slice(1);
+    if (suffix === "2") return 180;
+    if (suffix === "'") return -BASE_ANGLE[face];
+    return BASE_ANGLE[face];
+  }
+
+  function describeMove(move) {
+    const face = move[0];
+    const suffix = move.slice(1); // '', "'", atau "2"
+    if (suffix === "2") return `Putar lapisan ${FACE_LABEL_ID[face]} 180°.`;
+    if (suffix === "'") return `Putar lapisan ${FACE_LABEL_ID[face]} 90° berlawanan jarum jam.`;
+    return `Putar lapisan ${FACE_LABEL_ID[face]} 90° searah jarum jam.`;
+  }
+
+  // ================================================================
+  // STATE
+  // ================================================================
+  let currentColor = COLORS[0];
+  // selections[slot][faceIdx] = warna string atau null
+  const selections = {};
+  for (let s = 0; s < 8; s++) selections[s] = [null, null, null];
+
+  let mode = "input"; // "input" | "preview"
+  let previewMoves = [];
+  let previewStates = [];      // [{ "0":[c,c,c], ... }, ...] panjang = moves+1
+  let needsReorientation = false;
+  let reorientSteps = [];      // [{axis:'x'|'y', state:{...}}, ...] dari backend
+
+  // "frames" = tiap posisi berhenti (reorientasi bila perlu + tiap gerakan).
+  // "transitions[i]" = cara beranimasi dari frames[i] -> frames[i+1]:
+  //   {kind:'reorient', axis} atau {kind:'move', move}.
+  let frames = [];
+  let transitions = [];
+  let frameIdx = 0;
+  let animating = false;
+  let renderGen = 0; // guard thd callback animasi basi setelah Reset
+
+  let navX = 0, navY = 0;
+
+  // ================================================================
+  // BANGUN PALET
+  // ================================================================
+  const paletteEl = document.getElementById("palette");
+  COLORS.forEach((color, i) => {
+    const btn = document.createElement("button");
+    btn.className = "palette-btn" + (i === 0 ? " active" : "");
+    btn.style.background = COLOR_HEX[color];
+    btn.title = COLOR_LABEL_ID[color];
+    btn.addEventListener("click", () => {
+      currentColor = color;
+      document.querySelectorAll(".palette-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    });
+    paletteEl.appendChild(btn);
+  });
+
+  // ================================================================
+  // BANGUN 8 CUBIE
+  // ================================================================
+  const cubeInnerEl = document.getElementById("cube-inner");
+  const cubieEls = {};
+  const plateEls = {}; // plateEls[slot][face] = element
+
+  for (let slot = 0; slot < 8; slot++) {
+    const [x, y, z] = CORNER_COORD[slot];
+    const cubie = document.createElement("div");
+    cubie.className = "cubie";
+    // translate3d: x=x*OFFSET, y=-y*OFFSET (CSS y ke bawah, kita y ke atas), z=z*OFFSET
+    const base = `translate3d(${x * OFFSET}px, ${-y * OFFSET}px, ${z * OFFSET}px)`;
+    cubie.dataset.base = base;
+    cubie.style.transform = base;
+
+    plateEls[slot] = {};
+    CORNER_FACES[slot].forEach((face, faceIdx) => {
+      const plate = document.createElement("button");
+      plate.type = "button";
+      plate.className = "cubie-face";
+      plate.style.transform = FACE_LOCAL_TRANSFORM[face];
+      plate.dataset.slot = slot;
+      plate.dataset.faceIdx = faceIdx;
+      plate.title = `${CORNER_NAMES[slot]} · muka ${face}`;
+      plate.addEventListener("click", onPlateClick);
+      cubie.appendChild(plate);
+      plateEls[slot][face] = plate;
+    });
+
+    // Sisi DALAM cubie (yg tdk punya stiker) ditutup inti hitam pekat.
+    // Tanpa ini cubie berupa "kulit" berlubang: saat lapisan diputar,
+    // bagian belakang stiker cubie lain terlihat lewat lubang tsb dan
+    // tampak seperti warna yang berubah-ubah.
+    ["U","D","F","B","L","R"].filter(f => !CORNER_FACES[slot].includes(f)).forEach(face => {
+      const core = document.createElement("div");
+      core.className = "cubie-core";
+      core.style.transform = FACE_LOCAL_TRANSFORM[face];
+      cubie.appendChild(core);
+    });
+
+    cubeInnerEl.appendChild(cubie);
+    cubieEls[slot] = cubie;
+  }
+
+  function onPlateClick(e) {
+    if (mode !== "input") return;
+    const slot = Number(e.currentTarget.dataset.slot);
+    const faceIdx = Number(e.currentTarget.dataset.faceIdx);
+    selections[slot][faceIdx] = currentColor;
+    renderCubeFromCorners(selections);
+    updateProgress();
+  }
+
+  // ================================================================
+  // RENDER WARNA -- langsung set (snap), TANPA animasi putaran apapun
+  // ================================================================
+  function renderCubeFromCorners(cornerColors) {
+    for (let slot = 0; slot < 8; slot++) {
+      CORNER_FACES[slot].forEach((face, idx) => {
+        const entry = cornerColors[slot];
+        const color = entry ? entry[idx] : null;
+        plateEls[slot][face].style.background = color ? COLOR_HEX[color] : "var(--sticker-empty)";
+      });
+    }
+  }
+
+  // Deep copy state object dari backend: {"0":[c,c,c],...} -> {0:[c,c,c],...}
+  function cornerColorsFromStateObj(stateObj) {
+    const out = {};
+    for (let s = 0; s < 8; s++) {
+      // Salin array warna agar tidak ter-share reference
+      const arr = stateObj[String(s)];
+      out[s] = arr ? [...arr] : [null, null, null];
+    }
+    return out;
+  }
+
+  // Deep copy selections (array of arrays) -> object {0:[...], ...}
+  function copySelections(sel) {
+    const out = {};
+    for (let s = 0; s < 8; s++) {
+      out[s] = sel[s] ? [...sel[s]] : [null, null, null];
+    }
+    return out;
+  }
+
+  function updateProgress() {
+    let filled = 0;
+    Object.values(selections).forEach(s => { filled += s.filter(c => c !== null).length; });
+    document.getElementById("progress").textContent = `${filled}/24 stiker terisi`;
+  }
+
+  // ================================================================
+  // NAVIGASI KAMERA (lihat sisi lain) -- independen dari step solusi
+  // ================================================================
+  function updateCubeNav() {
+    document.getElementById("cube-nav").style.transform = `rotateX(${navX}deg) rotateY(${navY}deg)`;
+  }
+  document.getElementById("nav-left").addEventListener("click", () => { navY += 90; updateCubeNav(); });
+  document.getElementById("nav-right").addEventListener("click", () => { navY -= 90; updateCubeNav(); });
+  document.getElementById("nav-up").addEventListener("click", () => { navX += 90; updateCubeNav(); });
+
+  // ================================================================
+  // MESIN ANIMASI PUTARAN (DIPERBAIKI)
+  // ================================================================
+  //
+  // Trik animasi yang benar:
+  // Setiap cubie ada di posisi (x*OFFSET, -y*OFFSET, z*OFFSET) relatif terhadap
+  // pusat cube-inner. Untuk memutar sekumpulan cubie mengelilingi sumbu yang lewat
+  // pusat, kita gunakan PIVOT ELEMENT: sebuah div kosong di tengah (0,0,0) yang
+  // dirotasi. Cubie-cubie yang ikut berputar kita pindahkan ke dalam pivot itu
+  // (sebagai child), pivot dirotasi, lalu setelah animasi cubie dikembalikan ke
+  // cube-inner dengan posisi baru (sesuai state berikutnya).
+  //
+  // Cara ini lebih andal dari trick transform-string karena:
+  // 1. Tidak ada ambiguitas urutan transform
+  // 2. Pivot benar-benar di pusat kubus (bukan pusat cubie)
+  // ================================================================
+
+  function animateSlots(slots, cssAxis, angleDeg, durationMs, onDone) {
+    const gen = renderGen;
+
+    // Buat pivot element sementara di tengah cube-inner
+    const pivot = document.createElement("div");
+    pivot.className = "layer-pivot";
+    pivot.style.transformStyle = "preserve-3d";
+    pivot.style.transition = "none";
+    pivot.style.transform = "none";
+    cubeInnerEl.appendChild(pivot);
+
+    // Pindahkan cubie ke dalam pivot
+    // Cubie saat ini ada di posisi (x*OFFSET, -y*OFFSET, z*OFFSET) rel. cube-inner
+    // Kita pindahkan ke pivot (yang ada di center cube-inner, yaitu 50%,50%)
+    // tapi karena pivot sendiri punya margin -40px (tidak, pivot punya left:50% top:50% width:0 height:0)
+    // cubie di-translate dari (0,0,0) relatif pivot, jadi transform-nya tetap sama.
+    const cubieEls_slots = slots.map(s => cubieEls[s]);
+    cubieEls_slots.forEach(el => {
+      // Reset transition & transform ke base (posisi snap)
+      el.style.transition = "none";
+      el.style.transform = el.dataset.base;
+      pivot.appendChild(el);
+    });
+
+    // Paksa reflow agar posisi base ter-commit sebelum animasi mulai
+    void pivot.offsetWidth;
+
+    // Set transisi dan target rotasi pada pivot
+    requestAnimationFrame(() => {
+      if (gen !== renderGen) {
+        // Kembalikan cubie ke cube-inner sebelum abort
+        cubieEls_slots.forEach(el => cubeInnerEl.appendChild(el));
+        pivot.remove();
+        return;
+      }
+      pivot.style.transition = `transform ${durationMs}ms cubic-bezier(.4,0,.2,1)`;
+      pivot.style.transform = `rotate${cssAxis}(${angleDeg}deg)`;
+    });
+
+    setTimeout(() => {
+      if (gen !== renderGen) {
+        cubieEls_slots.forEach(el => cubeInnerEl.appendChild(el));
+        pivot.remove();
+        return;
+      }
+      // Kembalikan cubie ke cube-inner, reset transform ke base
+      cubieEls_slots.forEach(el => {
+        el.style.transition = "none";
+        el.style.transform = el.dataset.base;
+        cubeInnerEl.appendChild(el);
+      });
+      pivot.remove();
+      void cubeInnerEl.offsetWidth;
+      onDone();
+    }, durationMs + 60);
+  }
+
+  function animateTransition(t, forward, onDone) {
+    if (t.kind === "reorient") {
+      // Reorientasi: putar SEMUA 8 cubie
+      const info = REORIENT_AXIS_ANGLE[t.axis];
+      const angle = forward ? info.angle : -info.angle;
+      animateSlots([0,1,2,3,4,5,6,7], info.axis, angle, 420, onDone);
+    } else {
+      // Gerakan lapisan (U, R, F dan variannya)
+      const face = t.move[0];
+      const baseAngle = moveAngle(t.move);
+      const angle = forward ? baseAngle : -baseAngle;
+      animateSlots(LAYER_SLOTS[face], LAYER_AXIS[face], angle, 420, onDone);
+    }
+  }
+
+  // ================================================================
+  // STEP-THROUGH: "Step X of Y" + teks instruksi + ANIMASI
+  // ================================================================
+  function buildFrames() {
+    // Frame 0 = persis input user (deep copy agar tidak terpengaruh perubahan selections)
+    frames = [{ state: copySelections(selections) }];
+    transitions = [];
+
+    if (needsReorientation) {
+      reorientSteps.forEach(step => {
+        transitions.push({ kind: "reorient", axis: step.axis });
+        frames.push({ state: cornerColorsFromStateObj(step.state) });
+      });
+    }
+    previewMoves.forEach((move, i) => {
+      transitions.push({ kind: "move", move });
+      frames.push({ state: cornerColorsFromStateObj(previewStates[i + 1]) });
+    });
+  }
+
+  function labelFor(idx) {
+    if (idx >= transitions.length) return "Selesai! Kubus sudah terselesaikan.";
+    const t = transitions[idx];
+    return t.kind === "reorient"
+      ? "Putar SELURUH kubus (bukan satu sisi -- pegang & putar badannya "
+        + "sekaligus, susunan piece TIDAK berubah) supaya sejajar dengan "
+        + "posisi acuan solver."
+      : describeMove(t.move);
+  }
+
+  function updateStepChrome(idx) {
+    const labelEl = document.getElementById("step-label");
+    labelEl.className = "step-label";
+    labelEl.textContent = labelFor(idx);
+    document.getElementById("step-indicator").textContent = `${idx + 1} / ${frames.length}`;
+    document.getElementById("step-prev").disabled = idx === 0 || animating;
+    document.getElementById("step-next").disabled = idx === frames.length - 1 || animating;
+  }
+
+  function goToFrame(targetIdx, forward) {
+    if (animating) return;
+    const t = forward ? transitions[frameIdx] : transitions[targetIdx];
+    animating = true;
+    updateStepChrome(frameIdx);
+    const gen = renderGen;
+    animateTransition(t, forward, () => {
+      if (gen !== renderGen) return;
+      frameIdx = targetIdx;
+      renderCubeFromCorners(frames[frameIdx].state);
+      animating = false;
+      updateStepChrome(frameIdx);
+    });
+  }
+
+  document.getElementById("step-next").addEventListener("click", () => {
+    if (frameIdx < frames.length - 1) goToFrame(frameIdx + 1, true);
+  });
+  document.getElementById("step-prev").addEventListener("click", () => {
+    if (frameIdx > 0) goToFrame(frameIdx - 1, false);
+  });
+
+  // ================================================================
+  // RESET / CONTOH ACAK
+  // ================================================================
+  function enterInputMode() {
+    renderGen++; // batalkan callback animasi yang masih menggantung
+    animating = false;
+    mode = "input";
+    document.querySelectorAll(".cubie-face").forEach(p => p.classList.remove("readonly"));
+    document.getElementById("palette").classList.remove("disabled");
+    document.getElementById("step-controls").className = "step-controls hidden";
+    document.getElementById("step-label").className = "step-label hidden";
+    document.getElementById("result").className = "result hidden";
+  }
+
+  document.getElementById("btn-reset").addEventListener("click", () => {
+    for (let s = 0; s < 8; s++) selections[s] = [null, null, null];
+    renderCubeFromCorners(selections);
+    updateProgress();
+    enterInputMode();
+  });
+
+  document.getElementById("btn-example").addEventListener("click", async () => {
+    const res = await fetch("/api/example");
+    const data = await res.json();
+    for (let s = 0; s < 8; s++) selections[s] = data.corners[String(s)];
+    renderCubeFromCorners(selections);
+    updateProgress();
+    enterInputMode();
+  });
+
+  // ================================================================
+  // SOLVE
+  // ================================================================
+  function showResult(kind, html) {
+    const box = document.getElementById("result");
+    box.className = `result show ${kind}`;
+    box.innerHTML = html;
+  }
+
+  document.getElementById("btn-solve").addEventListener("click", async () => {
+    const incomplete = Object.values(selections).some(s => s.includes(null));
+    if (incomplete) {
+      showResult("error", "<p>Lengkapi dulu ke-24 stiker sebelum menyelesaikan.</p>");
+      return;
+    }
+
+    const btn = document.getElementById("btn-solve");
+    btn.disabled = true;
+    btn.textContent = "Menghitung...";
+
+    try {
+      // Konversi selections (key int/string, value array) ke format backend
+      // Backend Python mengharapkan: {"0": ["White","Red","Green"], ...}
+      const cornersPayload = {};
+      for (let s = 0; s < 8; s++) {
+        cornersPayload[String(s)] = selections[s];
+      }
+
+      const res = await fetch("/api/solve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ corners: cornersPayload }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showResult("error", `<p>${data.error || "Terjadi kesalahan."}</p>`);
+        return;
+      }
+      if (data.already_solved) {
+        showResult("success", "<p>Kubusmu sudah solved -- tidak ada gerakan yang diperlukan.</p>");
+        document.getElementById("step-controls").className = "step-controls hidden";
+        document.getElementById("step-label").className = "step-label hidden";
+        return;
+      }
+
+      previewMoves = data.moves;
+      previewStates = data.states;
+      needsReorientation = data.needs_reorientation;
+      reorientSteps = data.reorientation_steps;
+      mode = "preview";
+      document.querySelectorAll(".cubie-face").forEach(p => p.classList.add("readonly"));
+      document.getElementById("palette").classList.add("disabled");
+
+      showResult("success",
+        `<p><span class="moves">${data.moves.map(m => `<span class="tok">${m}</span>`).join("")}</span></p>
+         <p class="move-count">${data.moves.length} gerakan (solusi optimal) -- klik Berikutnya utk lihat kubus berputar mengikuti tiap langkah.</p>`);
+
+      buildFrames();
+      frameIdx = 0;
+      // Tampilkan frame awal = persis input user (warna sesuai input), tanpa animasi
+      renderCubeFromCorners(frames[0].state);
+      document.getElementById("step-controls").className = "step-controls";
+      updateStepChrome(0);
+    } catch (err) {
+      showResult("error", "<p>Tidak bisa terhubung ke server. Pastikan app.py sedang berjalan.</p>");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Selesaikan";
+    }
+  });
+
+  // init
+  renderCubeFromCorners(selections);
+  updateProgress();
+</script>
+</body>
+</html>
